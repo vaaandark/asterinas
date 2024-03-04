@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-use super::{Dentry, DentryKey, FileSystem, InodeType};
+use super::{vfsmount::Vfsmount, Dentry, DentryKey, FileSystem, InodeType};
 use crate::prelude::*;
 
 /// The MountNode can form a mount tree to maintain the mount information.
@@ -10,6 +10,8 @@ pub struct MountNode {
     /// Mountpoint dentry. A mount node can be mounted on one dentry of another mount node,
     /// which makes the mount being the child of the mount node.
     mountpoint_dentry: Option<Arc<Dentry>>,
+    /// TODO
+    mnt: Arc<Vfsmount>,
     /// The associated FS.
     fs: Arc<dyn FileSystem>,
     /// Child mount nodes which are mounted on one dentry of self.
@@ -34,11 +36,28 @@ impl MountNode {
     ///
     /// Root mount node has no mountpoint which other mount nodes must have mountpoint.
     fn new(fs: Arc<dyn FileSystem>, mountpoint: Option<Arc<Dentry>>) -> Arc<Self> {
+        Arc::new_cyclic(|weak_self| {
+            let root_dentry = Dentry::new_root(fs.root_inode(), weak_self.clone());
+            let mnt = Vfsmount::new(root_dentry.clone());
+
+            Self {
+                root_dentry,
+                mountpoint_dentry: mountpoint,
+                mnt,
+                fs,
+                children: Mutex::new(BTreeMap::new()),
+                this: weak_self.clone(),
+            }
+        })
+    }
+
+    pub fn copy_mount_node(mount_node: Arc<MountNode>) -> Arc<Self> {
         Arc::new_cyclic(|weak_self| Self {
-            root_dentry: Dentry::new_root(fs.root_inode(), weak_self.clone()),
-            mountpoint_dentry: mountpoint,
+            root_dentry: mount_node.root_dentry.clone(),
+            mountpoint_dentry: mount_node.mountpoint_dentry.clone(),
+            mnt: mount_node.mnt.clone(),
+            fs: mount_node.fs.clone(),
             children: Mutex::new(BTreeMap::new()),
-            fs,
             this: weak_self.clone(),
         })
     }

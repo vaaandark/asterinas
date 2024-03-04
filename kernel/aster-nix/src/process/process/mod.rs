@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use super::{
+    namespace::Nsproxy,
     posix_thread::PosixThreadExt,
     process_table,
     process_vm::{user_heap::UserHeap, ProcessVm},
@@ -70,6 +71,8 @@ pub struct Process {
     file_table: Arc<Mutex<FileTable>>,
     /// FsResolver
     fs: Arc<RwMutex<FsResolver>>,
+    /// Namespaces
+    nsproxy: Arc<Mutex<Nsproxy>>,
     /// umask
     umask: Arc<RwLock<FileCreationMask>>,
     /// resource limits
@@ -94,6 +97,7 @@ impl Process {
         process_vm: ProcessVm,
         file_table: Arc<Mutex<FileTable>>,
         fs: Arc<RwMutex<FsResolver>>,
+        nsproxy: Arc<Mutex<Nsproxy>>,
         umask: Arc<RwLock<FileCreationMask>>,
         sig_dispositions: Arc<Mutex<SigDispositions>>,
         resource_limits: ResourceLimits,
@@ -118,6 +122,7 @@ impl Process {
             process_group: Mutex::new(Weak::new()),
             file_table,
             fs,
+            nsproxy,
             umask,
             sig_dispositions,
             resource_limits: Mutex::new(resource_limits),
@@ -517,6 +522,12 @@ impl Process {
 
     pub fn umask(&self) -> &Arc<RwLock<FileCreationMask>> {
         &self.umask
+    }
+
+    // ************** Namespaces ****************
+
+    pub fn nsproxy(&self) -> &Arc<Mutex<Nsproxy>> {
+        &self.nsproxy
     }
 
     // ****************** Signal ******************

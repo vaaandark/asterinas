@@ -4,6 +4,7 @@ mod clone;
 mod credentials;
 mod exit;
 mod kill;
+mod namespace;
 pub mod posix_thread;
 #[allow(clippy::module_inception)]
 mod process;

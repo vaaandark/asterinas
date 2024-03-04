@@ -31,6 +31,7 @@ mod mount;
 mod page_cache;
 mod random_test;
 mod status_flags;
+mod vfsmount;
 
 use crate::prelude::*;
 

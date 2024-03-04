@@ -5,6 +5,7 @@ use crate::{
     fs::{file_table::FileTable, fs_resolver::FsResolver, utils::FileCreationMask},
     prelude::*,
     process::{
+        namespace::Nsproxy,
         posix_thread::{PosixThreadBuilder, PosixThreadExt},
         process_vm::ProcessVm,
         rlimit::ResourceLimits,
@@ -28,6 +29,7 @@ pub struct ProcessBuilder<'a> {
     process_vm: Option<ProcessVm>,
     file_table: Option<Arc<Mutex<FileTable>>>,
     fs: Option<Arc<RwMutex<FsResolver>>>,
+    nsproxy: Option<Arc<Mutex<Nsproxy>>>,
     umask: Option<Arc<RwLock<FileCreationMask>>>,
     resource_limits: Option<ResourceLimits>,
     sig_dispositions: Option<Arc<Mutex<SigDispositions>>>,
@@ -47,6 +49,7 @@ impl<'a> ProcessBuilder<'a> {
             process_vm: None,
             file_table: None,
             fs: None,
+            nsproxy: None,
             umask: None,
             resource_limits: None,
             sig_dispositions: None,
@@ -72,6 +75,11 @@ impl<'a> ProcessBuilder<'a> {
 
     pub fn fs(&mut self, fs: Arc<RwMutex<FsResolver>>) -> &mut Self {
         self.fs = Some(fs);
+        self
+    }
+
+    pub fn nsproxy(&mut self, nsproxy: Arc<Mutex<Nsproxy>>) -> &mut Self {
+        self.nsproxy = Some(nsproxy);
         self
     }
 
@@ -140,6 +148,7 @@ impl<'a> ProcessBuilder<'a> {
             process_vm,
             file_table,
             fs,
+            nsproxy,
             umask,
             resource_limits,
             sig_dispositions,
@@ -155,6 +164,10 @@ impl<'a> ProcessBuilder<'a> {
 
         let fs = fs
             .or_else(|| Some(Arc::new(RwMutex::new(FsResolver::new()))))
+            .unwrap();
+
+        let nsproxy = nsproxy
+            .or_else(|| Some(Arc::new(Mutex::new(Nsproxy::default()))))
             .unwrap();
 
         let umask = umask
@@ -181,6 +194,7 @@ impl<'a> ProcessBuilder<'a> {
                 process_vm,
                 file_table,
                 fs,
+                nsproxy,
                 umask,
                 sig_dispositions,
                 resource_limits,

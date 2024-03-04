@@ -7,6 +7,10 @@ use aster_rights::Full;
 
 use super::{
     credentials,
+    namespace::{
+        mnt_namespace::{self, MntNamespace},
+        Nsproxy,
+    },
     posix_thread::{PosixThread, PosixThreadBuilder, PosixThreadExt, ThreadName},
     process_table,
     process_vm::ProcessVm,
@@ -15,7 +19,11 @@ use super::{
 };
 use crate::{
     current_thread,
-    fs::{file_table::FileTable, fs_resolver::FsResolver, utils::FileCreationMask},
+    fs::{
+        file_table::FileTable,
+        fs_resolver::FsResolver,
+        utils::{FileCreationMask, MountNode},
+    },
     prelude::*,
     thread::{allocate_tid, thread_table, Thread, Tid},
     util::write_val_to_user,
@@ -242,6 +250,9 @@ fn clone_child_process(parent_context: UserContext, clone_args: CloneArgs) -> Re
     // clone fs
     let child_fs = clone_fs(current.fs(), clone_flags);
 
+    // clone nsproxy
+    let child_nsproxy = clone_nsproxy(current.nsproxy(), clone_flags);
+
     // clone umask
     let child_umask = {
         let parent_umask = current.umask().read().get();
@@ -290,6 +301,7 @@ fn clone_child_process(parent_context: UserContext, clone_args: CloneArgs) -> Re
             .process_vm(child_process_vm)
             .file_table(child_file_table)
             .fs(child_fs)
+            .nsproxy(child_nsproxy)
             .umask(child_umask)
             .sig_dispositions(child_sig_dispositions)
             .nice(child_nice);
@@ -397,6 +409,22 @@ fn clone_fs(
         parent_fs.clone()
     } else {
         Arc::new(RwMutex::new(parent_fs.read().clone()))
+    }
+}
+
+fn clone_nsproxy(
+    parent_nsproxy: &Arc<Mutex<Nsproxy>>,
+    clone_flags: CloneFlags,
+) -> Arc<Mutex<Nsproxy>> {
+    if clone_flags.contains(CloneFlags::CLONE_NEWNS) {
+        let parent_ns = parent_nsproxy.lock();
+        let mnt_ns = parent_ns.mnt_ns();
+        let mountnode = mnt_ns.root();
+        let new_mountnode = MountNode::copy_mount_node(mountnode.clone());
+        let new_mntnamespace = MntNamespace::new(new_mountnode.clone());
+        Arc::new(Mutex::new(Nsproxy::new(new_mntnamespace)))
+    } else {
+        parent_nsproxy.clone()
     }
 }
 
