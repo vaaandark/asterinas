@@ -27,7 +27,7 @@ use crate::{
     thread::kernel_thread::KernelThreadExt,
 };
 
-fn start_block_device(device_name: &str) -> Result<Arc<dyn BlockDevice>> {
+pub fn start_block_device(device_name: &str) -> Result<Arc<dyn BlockDevice>> {
     if let Some(device) = aster_block::get_device(device_name) {
         let cloned_device = device.clone();
         let task_fn = move || {

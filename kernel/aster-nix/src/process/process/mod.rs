@@ -89,7 +89,7 @@ pub struct Process {
 
 impl Process {
     #[allow(clippy::too_many_arguments)]
-    fn new(
+    pub fn new(
         pid: Pid,
         parent: Weak<Process>,
         threads: Vec<Arc<Thread>>,
@@ -622,6 +622,7 @@ mod test {
             ProcessVm::alloc(),
             Arc::new(Mutex::new(FileTable::new())),
             Arc::new(RwMutex::new(FsResolver::new())),
+            Arc::new(Mutex::new(Nsproxy::default())),
             Arc::new(RwLock::new(FileCreationMask::default())),
             Arc::new(Mutex::new(SigDispositions::default())),
             ResourceLimits::default(),
@@ -667,6 +668,7 @@ mod test {
     #[ktest]
     fn init_process() {
         let process = new_process(None);
+        println!("process = {:?}", process.fs());
         assert!(process.process_group().is_none());
         assert!(process.session().is_none());
     }

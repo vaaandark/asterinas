@@ -1,5 +1,4 @@
 pub mod mnt_namespace;
-use core::default;
 
 use crate::{prelude::*, process::namespace::mnt_namespace::MntNamespace};
 

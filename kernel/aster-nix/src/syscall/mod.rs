@@ -57,6 +57,7 @@ use crate::{
         madvise::sys_madvise,
         mkdir::{sys_mkdir, sys_mkdirat},
         mmap::sys_mmap,
+        mount::sys_mount,
         mprotect::sys_mprotect,
         munmap::sys_munmap,
         open::{sys_open, sys_openat},
@@ -88,6 +89,7 @@ use crate::{
         umask::sys_umask,
         uname::sys_uname,
         unlink::{sys_unlink, sys_unlinkat},
+        unshare::sys_unshare,
         utimens::sys_utimensat,
         wait4::sys_wait4,
         waitid::sys_waitid,
@@ -148,6 +150,7 @@ mod lseek;
 mod madvise;
 mod mkdir;
 mod mmap;
+mod mount;
 mod mprotect;
 mod munmap;
 mod open;
@@ -197,6 +200,7 @@ mod truncate;
 mod umask;
 mod uname;
 mod unlink;
+mod unshare;
 mod utimens;
 mod wait4;
 mod waitid;
@@ -334,6 +338,7 @@ define_syscall_nums!(
     SYS_ARCH_PRCTL = 158,
     SYS_CHROOT = 161,
     SYS_SYNC = 162,
+    SYS_MOUNT = 165,
     SYS_GETTID = 186,
     SYS_TIME = 201,
     SYS_FUTEX = 202,
@@ -357,6 +362,7 @@ define_syscall_nums!(
     SYS_SYMLINKAT = 266,
     SYS_READLINKAT = 267,
     SYS_FCHMODAT = 268,
+    SYS_UNSHARE = 272,
     SYS_SET_ROBUST_LIST = 273,
     SYS_UTIMENSAT = 280,
     SYS_EPOLL_CREATE1 = 291,
@@ -522,6 +528,7 @@ pub fn syscall_dispatch(
         SYS_ARCH_PRCTL => syscall_handler!(2, sys_arch_prctl, args, context),
         SYS_CHROOT => syscall_handler!(1, sys_chroot, args),
         SYS_SYNC => syscall_handler!(0, sys_sync),
+        SYS_MOUNT => syscall_handler!(5, sys_mount, args),
         SYS_GETTID => syscall_handler!(0, sys_gettid),
         SYS_TIME => syscall_handler!(1, sys_time, args),
         SYS_FUTEX => syscall_handler!(6, sys_futex, args),
@@ -545,6 +552,7 @@ pub fn syscall_dispatch(
         SYS_SYMLINKAT => syscall_handler!(3, sys_symlinkat, args),
         SYS_READLINKAT => syscall_handler!(4, sys_readlinkat, args),
         SYS_FCHMODAT => syscall_handler!(3, sys_fchmodat, args),
+        SYS_UNSHARE => syscall_handler!(1, sys_unshare, args),
         SYS_SET_ROBUST_LIST => syscall_handler!(2, sys_set_robust_list, args),
         SYS_UTIMENSAT => syscall_handler!(4, sys_utimensat, args),
         SYS_EPOLL_CREATE1 => syscall_handler!(1, sys_epoll_create1, args),

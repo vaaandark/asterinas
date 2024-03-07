@@ -36,6 +36,7 @@ impl MountNode {
     ///
     /// Root mount node has no mountpoint which other mount nodes must have mountpoint.
     fn new(fs: Arc<dyn FileSystem>, mountpoint: Option<Arc<Dentry>>) -> Arc<Self> {
+        println!("Mountnode::new mountpoint");
         Arc::new_cyclic(|weak_self| {
             let root_dentry = Dentry::new_root(fs.root_inode(), weak_self.clone());
             let mnt = Vfsmount::new(root_dentry.clone());
@@ -51,15 +52,39 @@ impl MountNode {
         })
     }
 
-    pub fn copy_mount_node(mount_node: Arc<MountNode>) -> Arc<Self> {
+    /// clone a mount node
+    pub fn clone_mnt(mount_node: Arc<MountNode>) -> Arc<Self> {
         Arc::new_cyclic(|weak_self| Self {
-            root_dentry: mount_node.root_dentry.clone(),
-            mountpoint_dentry: mount_node.mountpoint_dentry.clone(),
-            mnt: mount_node.mnt.clone(),
-            fs: mount_node.fs.clone(),
+            root_dentry: mount_node.root_dentry().clone(),
+            mountpoint_dentry: mount_node.mountpoint_dentry().clone().cloned(),
+            mnt: Vfsmount::new(mount_node.mnt().mnt_root().clone()),
+            fs: mount_node.fs().clone(),
             children: Mutex::new(BTreeMap::new()),
             this: weak_self.clone(),
         })
+    }
+
+    /// copy a mount tree
+    pub fn copy_tree(old_mount_node: Arc<MountNode>) -> Arc<Self> {
+        let new_mount_node = MountNode::clone_mnt(old_mount_node.clone());
+        let mut stack = vec![old_mount_node.clone()];
+        let mut new_stack = vec![new_mount_node.clone()];
+
+        while let Some(current_mount_node) = stack.pop() {
+            let children = current_mount_node.children.lock();
+            for child in children.values() {
+                stack.push(child.clone());
+                let new_child_mount_node = MountNode::clone_mnt(child.clone());
+                new_stack.push(new_child_mount_node.clone());
+                let parent = new_stack.pop().unwrap();
+                let key = new_child_mount_node.mountpoint_dentry().unwrap().key();
+                parent
+                    .children
+                    .lock()
+                    .insert(key, new_child_mount_node.clone());
+            }
+        }
+        new_mount_node.clone()
     }
 
     /// Mount an fs on the mountpoint, it will create a new child mount node.
@@ -143,6 +168,11 @@ impl MountNode {
     /// Get strong reference to self.
     fn this(&self) -> Arc<Self> {
         self.this.upgrade().unwrap()
+    }
+
+    /// Get vfsmount
+    pub fn mnt(&self) -> &Arc<Vfsmount> {
+        &self.mnt
     }
 
     /// Get the associated fs.
