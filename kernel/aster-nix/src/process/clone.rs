@@ -108,7 +108,8 @@ impl CloneFlags {
             | CloneFlags::CLONE_SETTLS
             | CloneFlags::CLONE_PARENT_SETTID
             | CloneFlags::CLONE_CHILD_SETTID
-            | CloneFlags::CLONE_CHILD_CLEARTID;
+            | CloneFlags::CLONE_CHILD_CLEARTID
+            | CloneFlags::CLONE_NEWNS;
         let unsupported_flags = *self - supported_flags;
         if !unsupported_flags.is_empty() {
             panic!("contains unsupported clone flags: {:?}", unsupported_flags);
@@ -409,14 +410,17 @@ fn clone_nsproxy(
     parent_nsproxy: &Arc<Mutex<Nsproxy>>,
     clone_flags: CloneFlags,
 ) -> Arc<Mutex<Nsproxy>> {
-    if clone_flags.contains(CloneFlags::CLONE_NEWNS) {
-        let parent_nsproxy = parent_nsproxy.lock();
+    let parent_nsproxy = parent_nsproxy.lock();
+
+    // if CLONE_NEWNS is set, clone the mount namespace.
+    let new_mnt_ns = if clone_flags.contains(CloneFlags::CLONE_NEWNS) {
         let mnt_ns = parent_nsproxy.mnt_ns();
-        let new_ns = MntNamespace::copy_mnt_ns(mnt_ns);
-        Arc::new(Mutex::new(Nsproxy::new(new_ns)))
+        MntNamespace::copy_mnt_ns(mnt_ns)
     } else {
-        parent_nsproxy.clone()
-    }
+        parent_nsproxy.mnt_ns().clone()
+    };
+
+    Arc::new(Mutex::new(Nsproxy::new(new_mnt_ns)))
 }
 
 fn clone_files(
@@ -469,16 +473,10 @@ fn set_parent_and_group(parent: &Arc<Process>, child: &Arc<Process>) {
 }
 
 pub fn do_unshare(unshare_flags: CloneFlags) {
-    let mut current = current!();
+    let current = current!();
     unshare_flags.check_unsupported_flags();
-
-    // clone file table
-    let child_file_table = clone_files(current.file_table(), unshare_flags);
-
-    // clone fs
-    let child_fs = clone_fs(current.fs(), unshare_flags);
 
     // clone nsproxy
     let child_nsproxy = clone_nsproxy(current.nsproxy(), unshare_flags);
-
+    current.switch_namespaces(child_nsproxy);
 }

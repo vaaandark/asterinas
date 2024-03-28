@@ -14,6 +14,7 @@ pub fn sys_unshare(unshare_flags: u64) -> Result<SyscallReturn> {
     let unshare_flags: crate::process::CloneFlags = CloneFlags::from(unshare_flags);
     debug!("flags = {:?}", unshare_flags);
     let current = current!();
+    println!("prepare do_unshare");
     do_unshare(unshare_flags);
     Ok(SyscallReturn::Return(0))
 }

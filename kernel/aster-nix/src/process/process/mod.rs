@@ -231,6 +231,11 @@ impl Process {
             .cloned()
     }
 
+    pub fn switch_namespaces(&self, nsproxy: Arc<Mutex<Nsproxy>>) {
+        let mut old_nsproxy = self.nsproxy.lock();
+        old_nsproxy.set_namespaces(nsproxy);
+    }
+
     // *********** Parent and child ***********
     pub fn parent(&self) -> Option<Arc<Process>> {
         self.parent.lock().upgrade()

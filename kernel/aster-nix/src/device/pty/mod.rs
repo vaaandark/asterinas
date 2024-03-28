@@ -4,7 +4,7 @@ use crate::{
     fs::{
         devpts::DevPts,
         fs_resolver::{FsPath, FsResolver},
-        utils::{Dentry, Inode, InodeMode, InodeType},
+        utils::{Inode, InodeMode, InodeType, Path},
     },
     prelude::*,
 };
@@ -15,20 +15,22 @@ mod pty;
 pub use pty::{PtyMaster, PtySlave};
 use spin::Once;
 
-static DEV_PTS: Once<Arc<Dentry>> = Once::new();
+static DEV_PTS: Once<Arc<Path>> = Once::new();
 
 pub fn init() -> Result<()> {
     let fs = FsResolver::new();
 
     let dev = fs.lookup(&FsPath::try_from("/dev")?)?;
     // Create the "pts" directory and mount devpts on it.
-    let devpts = dev.create("pts", InodeType::Dir, InodeMode::from_bits_truncate(0o755))?;
-    devpts.mount(DevPts::new())?;
-
+    let devpts_dentry =
+        dev.dentry()
+            .create("pts", InodeType::Dir, InodeMode::from_bits_truncate(0o755))?;
+    let devpts_mnt = Path::new(dev.mntnode().clone(), devpts_dentry.clone()).mount(DevPts::new())?;
+    let devpts = Path::new(devpts_mnt.clone(), devpts_mnt.root_dentry().clone());
     DEV_PTS.call_once(|| devpts);
 
     // Create the "ptmx" symlink.
-    let ptmx = dev.create(
+    let ptmx = dev.dentry().create(
         "ptmx",
         InodeType::SymLink,
         InodeMode::from_bits_truncate(0o777),

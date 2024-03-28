@@ -19,12 +19,12 @@ pub fn sys_statfs(path_ptr: Vaddr, statfs_buf_ptr: Vaddr) -> Result<SyscallRetur
     debug!("path = {:?}, statfs_buf_ptr = 0x{:x}", path, statfs_buf_ptr,);
 
     let current = current!();
-    let dentry = {
+    let dir_path = {
         let path = path.to_string_lossy();
         let fs_path = FsPath::try_from(path.as_ref())?;
         current.fs().read().lookup(&fs_path)?
     };
-    let statfs = Statfs::from(dentry.fs().sb());
+    let statfs = Statfs::from(dir_path.dentry().fs().sb());
     write_val_to_user(statfs_buf_ptr, &statfs)?;
     Ok(SyscallReturn::Return(0))
 }
@@ -39,7 +39,7 @@ pub fn sys_fstatfs(fd: FileDescripter, statfs_buf_ptr: Vaddr) -> Result<SyscallR
     let inode_handle = file
         .downcast_ref::<InodeHandle>()
         .ok_or(Error::with_message(Errno::EBADF, "not inode"))?;
-    let dentry = inode_handle.dentry();
+    let dentry = inode_handle.path().dentry();
     let statfs = Statfs::from(dentry.fs().sb());
     write_val_to_user(statfs_buf_ptr, &statfs)?;
     Ok(SyscallReturn::Return(0))

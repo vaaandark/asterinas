@@ -28,7 +28,7 @@ pub fn sys_unlinkat(
     debug!("dirfd = {}, pathname = {:?}", dirfd, pathname);
 
     let current = current!();
-    let (dir_dentry, name) = {
+    let (dir_path, name) = {
         let pathname = pathname.to_string_lossy();
         if pathname.is_empty() {
             return_errno_with_message!(Errno::ENOENT, "path is empty");
@@ -39,7 +39,7 @@ pub fn sys_unlinkat(
         let fs_path = FsPath::new(dirfd, pathname.as_ref())?;
         current.fs().read().lookup_dir_and_base_name(&fs_path)?
     };
-    dir_dentry.unlink(&name)?;
+    dir_path.dentry().unlink(&name)?;
     Ok(SyscallReturn::Return(0))
 }
 

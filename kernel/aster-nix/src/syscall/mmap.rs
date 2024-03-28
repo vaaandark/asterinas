@@ -102,8 +102,8 @@ fn alloc_filebacked_vmo(
     let current = current!();
     let page_cache_vmo = {
         let fs_resolver = current.fs().read();
-        let dentry = fs_resolver.lookup_from_fd(fd)?;
-        let inode = dentry.inode();
+        let dir_path = fs_resolver.lookup_from_fd(fd)?;
+        let inode = dir_path.dentry().inode();
         inode
             .page_cache()
             .ok_or(Error::with_message(

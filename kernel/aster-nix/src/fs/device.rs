@@ -85,7 +85,7 @@ impl From<DeviceId> for u64 {
 /// If the parent path is not existing, `mkdir -p` the parent path.
 /// This function is used in registering device.
 pub fn add_node(device: Arc<dyn Device>, path: &str) -> Result<Arc<Dentry>> {
-    let mut dentry = {
+    let mut dir_path = {
         let fs_resolver = FsResolver::new();
         fs_resolver.lookup(&FsPath::try_from("/dev").unwrap())?
     };
@@ -96,6 +96,7 @@ pub fn add_node(device: Arc<dyn Device>, path: &str) -> Result<Arc<Dentry>> {
         }
         relative_path
     };
+    let mut dentry = dir_path.dentry().clone();
 
     while !relative_path.is_empty() {
         let (next_name, path_remain) = if let Some((prefix, suffix)) = relative_path.split_once('/')
@@ -105,24 +106,24 @@ pub fn add_node(device: Arc<dyn Device>, path: &str) -> Result<Arc<Dentry>> {
             (relative_path, "")
         };
 
-        match dentry.lookup(next_name) {
-            Ok(next_dentry) => {
+        match dir_path.lookup(next_name) {
+            Ok(next_path) => {
                 if path_remain.is_empty() {
                     return_errno_with_message!(Errno::EEXIST, "device node is existing");
                 }
-                dentry = next_dentry;
+                dir_path = next_path;
             }
             Err(_) => {
                 if path_remain.is_empty() {
                     // Create the device node
-                    dentry = dentry.mknod(
+                    dentry = dir_path.dentry().mknod(
                         next_name,
                         InodeMode::from_bits_truncate(0o666),
                         device.clone(),
                     )?;
                 } else {
                     // Mkdir parent path
-                    dentry = dentry.create(
+                    dentry = dir_path.dentry().create(
                         next_name,
                         InodeType::Dir,
                         InodeMode::from_bits_truncate(0o755),
@@ -153,6 +154,6 @@ pub fn delete_node(path: &str) -> Result<()> {
         fs_resolver.lookup_dir_and_base_name(&FsPath::try_from(abs_path.as_str()).unwrap())?
     };
 
-    parent_dentry.unlink(&name)?;
+    parent_dentry.dentry().unlink(&name)?;
     Ok(())
 }

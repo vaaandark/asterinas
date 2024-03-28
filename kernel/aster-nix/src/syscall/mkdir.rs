@@ -26,7 +26,7 @@ pub fn sys_mkdirat(
     );
 
     let current = current!();
-    let (dir_dentry, name) = {
+    let (dir_path, name) = {
         let pathname = pathname.to_string_lossy();
         if pathname.is_empty() {
             return_errno_with_message!(Errno::ENOENT, "path is empty");
@@ -39,7 +39,9 @@ pub fn sys_mkdirat(
         let mask_mode = mode & !current.umask().read().get();
         InodeMode::from_bits_truncate(mask_mode)
     };
-    let _ = dir_dentry.create(name.trim_end_matches('/'), InodeType::Dir, inode_mode)?;
+    let _ = dir_path
+        .dentry()
+        .create(name.trim_end_matches('/'), InodeType::Dir, inode_mode)?;
     Ok(SyscallReturn::Return(0))
 }
 

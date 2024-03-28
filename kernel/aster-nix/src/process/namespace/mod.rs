@@ -24,4 +24,9 @@ impl Nsproxy {
     pub fn mnt_ns(&self) -> &Arc<MntNamespace> {
         &self.mnt_ns
     }
+
+    pub fn set_namespaces(&mut self, nsproxy: Arc<Mutex<Nsproxy>>) {
+        let new_nsproxy = nsproxy.lock();
+        self.mnt_ns = new_nsproxy.mnt_ns().clone();
+    }
 }

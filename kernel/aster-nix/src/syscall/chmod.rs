@@ -39,7 +39,7 @@ pub fn sys_fchmodat(
     debug!("dirfd = {}, path = {:?}, mode = 0o{:o}", dirfd, path, mode,);
 
     let current = current!();
-    let dentry = {
+    let dir_path = {
         let path = path.to_string_lossy();
         if path.is_empty() {
             return_errno_with_message!(Errno::ENOENT, "path is empty");
@@ -47,6 +47,8 @@ pub fn sys_fchmodat(
         let fs_path = FsPath::new(dirfd, path.as_ref())?;
         current.fs().read().lookup(&fs_path)?
     };
-    dentry.set_mode(InodeMode::from_bits_truncate(mode))?;
+    dir_path
+        .dentry()
+        .set_mode(InodeMode::from_bits_truncate(mode))?;
     Ok(SyscallReturn::Return(0))
 }
