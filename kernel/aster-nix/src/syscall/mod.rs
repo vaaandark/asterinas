@@ -87,6 +87,7 @@ use crate::{
         time::sys_time,
         truncate::{sys_ftruncate, sys_truncate},
         umask::sys_umask,
+        umount::sys_umount,
         uname::sys_uname,
         unlink::{sys_unlink, sys_unlinkat},
         unshare::sys_unshare,
@@ -198,6 +199,7 @@ mod tgkill;
 mod time;
 mod truncate;
 mod umask;
+mod umount;
 mod uname;
 mod unlink;
 mod unshare;
@@ -339,6 +341,7 @@ define_syscall_nums!(
     SYS_CHROOT = 161,
     SYS_SYNC = 162,
     SYS_MOUNT = 165,
+    SYS_UMOUNT = 166,
     SYS_GETTID = 186,
     SYS_TIME = 201,
     SYS_FUTEX = 202,
@@ -529,6 +532,7 @@ pub fn syscall_dispatch(
         SYS_CHROOT => syscall_handler!(1, sys_chroot, args),
         SYS_SYNC => syscall_handler!(0, sys_sync),
         SYS_MOUNT => syscall_handler!(5, sys_mount, args),
+        SYS_UMOUNT => syscall_handler!(2, sys_umount, args),
         SYS_GETTID => syscall_handler!(0, sys_gettid),
         SYS_TIME => syscall_handler!(1, sys_time, args),
         SYS_FUTEX => syscall_handler!(6, sys_futex, args),

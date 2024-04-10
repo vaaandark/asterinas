@@ -154,6 +154,27 @@ impl Path {
         Ok(child_mount)
     }
 
+    /// Unmount and return the mounted child mount.
+    ///
+    /// Note that the root mount cannot be unmounted.
+    pub fn umount(&self) -> Result<Arc<MountNode>> {
+        if !self.dentry.is_root_of_mount() {
+            return_errno_with_message!(Errno::EINVAL, "not mounted");
+        }
+
+        let mount_node = self.mntnode.clone();
+        let Some(mountpoint_dentry) = mount_node.mountpoint_dentry() else {
+            return_errno_with_message!(Errno::EINVAL, "cannot umount root mount");
+        };
+
+        let mountpoint_mount_node = mount_node.parent().unwrap().upgrade().unwrap();
+        let mountpoint_path = Path::new(mountpoint_mount_node.clone(), mountpoint_dentry.clone());
+
+        let child_mount = mountpoint_mount_node.umount(&mountpoint_path)?;
+        mountpoint_dentry.clear_mountpoint();
+        Ok(child_mount)
+    }
+
     /// Link a new name for the path's dentry by linking inode.
     pub fn link(&self, old: &Arc<Self>, name: &str) -> Result<()> {
         if self.dentry.inode().type_() != InodeType::Dir {

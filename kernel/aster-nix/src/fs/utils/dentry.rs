@@ -115,7 +115,7 @@ impl Dentry {
             .fetch_or(DentryFlags::MOUNTED.bits(), Ordering::Release);
     }
 
-    fn clear_mountpoint(&self) {
+    pub fn clear_mountpoint(&self) {
         self.flags
             .fetch_and(!(DentryFlags::MOUNTED.bits()), Ordering::Release);
     }
