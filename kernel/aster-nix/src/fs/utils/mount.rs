@@ -9,11 +9,11 @@ pub struct MountNode {
     root_dentry: Arc<Dentry>,
     /// Mountpoint dentry. A mount node can be mounted on one dentry of another mount node,
     /// which makes the mount being the child of the mount node.
-    mountpoint_dentry: Option<Arc<Dentry>>,
+    mountpoint_dentry: RwLock<Option<Arc<Dentry>>>,
     /// The associated FS.
     fs: Arc<dyn FileSystem>,
     /// The parent mount.
-    parent: Option<Weak<MountNode>>,
+    parent: RwLock<Option<Weak<MountNode>>>,
     /// Child mount nodes which are mounted on one dentry of self.
     children: Mutex<BTreeMap<DentryKey, Arc<Self>>>,
     /// Reference to self.
@@ -42,9 +42,9 @@ impl MountNode {
     ) -> Arc<Self> {
         Arc::new_cyclic(|weak_self| Self {
             root_dentry: Dentry::new_root(fs.root_inode().clone()),
-            mountpoint_dentry: mountpoint,
+            mountpoint_dentry: RwLock::new(mountpoint),
             fs,
-            parent: parent_mount,
+            parent: RwLock::new(parent_mount),
             children: Mutex::new(BTreeMap::new()),
             this: weak_self.clone(),
         })
@@ -52,47 +52,24 @@ impl MountNode {
 
     /// Clone a mount node.
     pub fn clone_mnt(
+        root_dentry: Arc<Dentry>,
         mount_node: Arc<MountNode>,
         parent_mount: Option<Weak<MountNode>>,
     ) -> Arc<Self> {
         Arc::new_cyclic(|weak_self| Self {
-            root_dentry: mount_node.root_dentry().clone(),
-            mountpoint_dentry: mount_node.mountpoint_dentry().cloned(),
+            root_dentry: root_dentry.clone(),
+            mountpoint_dentry: RwLock::new(mount_node.mountpoint_dentry()),
             fs: mount_node.fs().clone(),
-            parent: parent_mount,
+            parent: RwLock::new(parent_mount),
             children: Mutex::new(BTreeMap::new()),
             this: weak_self.clone(),
         })
     }
 
     /// Copy a mount tree.
-    pub fn copy_tree(old_mount_node: Arc<MountNode>) -> Arc<Self> {
+    pub fn copy_tree(old_mount_node: Arc<MountNode>, old_root_dentry: Arc<Dentry>) -> Arc<Self> {
         println!("old_mount_node: {:p}", old_mount_node);
-        let current = current!();
-        let new_mount_node = MountNode::clone_mnt(old_mount_node.clone(), None);
-
-        if Arc::ptr_eq(
-            old_mount_node.root_dentry(),
-            current.fs().read().root().mntnode().root_dentry(),
-        ) {
-            let new_root_path = Path::new(
-                new_mount_node.clone(),
-                current.fs().read().root().dentry().clone(),
-            );
-            current.fs().write().set_root(new_root_path.clone());
-        }
-
-        if Arc::ptr_eq(
-            old_mount_node.root_dentry(),
-            current.fs().read().cwd().mntnode().root_dentry(),
-        ) {
-            let new_cwd_path = Path::new(
-                new_mount_node.clone(),
-                current.fs().read().cwd().dentry().clone(),
-            );
-            current.fs().write().set_cwd(new_cwd_path.clone());
-        }
-
+        let new_mount_node = MountNode::clone_mnt(old_root_dentry, old_mount_node.clone(), None);
         let mut stack = vec![old_mount_node.clone()];
         let mut new_stack = vec![new_mount_node.clone()];
 
@@ -101,40 +78,68 @@ impl MountNode {
             let parent = new_stack.pop().unwrap();
             for child in children.values() {
                 stack.push(child.clone());
-                let new_child_mount_node =
-                    MountNode::clone_mnt(child.clone(), Some(Arc::downgrade(&parent)));
+                let new_child_mount_node = MountNode::clone_mnt(
+                    child.root_dentry().clone(),
+                    child.clone(),
+                    Some(Arc::downgrade(&parent)),
+                );
                 let key = new_child_mount_node.mountpoint_dentry().unwrap().key();
 
                 parent
                     .children
                     .lock()
                     .insert(key, new_child_mount_node.clone());
-
-                if Arc::ptr_eq(
-                    child.root_dentry(),
-                    current.fs().read().root().mntnode().root_dentry(),
-                ) {
-                    let new_root_path = Path::new(
-                        new_child_mount_node.clone(),
-                        current.fs().read().root().dentry().clone(),
-                    );
-                    current.fs().write().set_root(new_root_path.clone());
-                }
-
-                if Arc::ptr_eq(
-                    child.root_dentry(),
-                    current.fs().read().cwd().mntnode().root_dentry(),
-                ) {
-                    let new_cwd_path = Path::new(
-                        new_child_mount_node.clone(),
-                        current.fs().read().cwd().dentry().clone(),
-                    );
-                    current.fs().write().set_cwd(new_cwd_path.clone());
-                }
                 new_stack.push(new_child_mount_node.clone());
             }
         }
         new_mount_node.clone()
+    }
+
+    pub fn attach_mnt(new_mount_node: Arc<MountNode>, new_path: Arc<Path>) {
+        let parent_mount_node = new_path.mntnode();
+        let mountpoint_dentry = new_path.dentry();
+        let mut children = parent_mount_node.children.lock();
+        let key = mountpoint_dentry.key();
+        children.insert(key, new_mount_node.clone());
+        new_mount_node.set_mountpoint_dentry(mountpoint_dentry.clone());
+        new_mount_node.set_parent(parent_mount_node.clone());
+        mountpoint_dentry.set_mountpoint();
+    }
+
+    /// Move process root and cwd directory to new mount namespace.
+    pub fn process_move(mount_node: Arc<MountNode>) -> Result<()> {
+        let current = current!();
+        let mut stack = vec![mount_node.clone()];
+
+        while let Some(current_mount_node) = stack.pop() {
+            if Arc::ptr_eq(
+                current_mount_node.root_dentry(),
+                current.fs().read().root().mntnode().root_dentry(),
+            ) {
+                let new_root_path = Path::new(
+                    current_mount_node.clone(),
+                    current.fs().read().root().dentry().clone(),
+                );
+                current.fs().write().set_root(new_root_path.clone());
+            }
+
+            if Arc::ptr_eq(
+                current_mount_node.root_dentry(),
+                current.fs().read().cwd().mntnode().root_dentry(),
+            ) {
+                let new_cwd_path = Path::new(
+                    current_mount_node.clone(),
+                    current.fs().read().cwd().dentry().clone(),
+                );
+                current.fs().write().set_cwd(new_cwd_path.clone());
+            }
+
+            let children = current_mount_node.children.lock();
+            for child in children.values() {
+                stack.push(child.clone());
+            }
+        }
+        Ok(())
     }
 
     /// Mount an fs on the mountpoint, it will create a new child mount node.
@@ -193,8 +198,16 @@ impl MountNode {
     }
 
     /// Try to get the mountpoint dentry of this mount node.
-    pub fn mountpoint_dentry(&self) -> Option<&Arc<Dentry>> {
-        self.mountpoint_dentry.as_ref()
+    pub fn mountpoint_dentry(&self) -> Option<Arc<Dentry>> {
+        self.mountpoint_dentry
+            .read()
+            .as_ref()
+            .map(|mountpoint_dentry| mountpoint_dentry.clone())
+    }
+
+    pub fn set_mountpoint_dentry(&self, mountpoint_dentry: Arc<Dentry>) {
+        let mut mountpoint = self.mountpoint_dentry.write();
+        *mountpoint = Some(mountpoint_dentry);
     }
 
     /// Flushes all pending filesystem metadata and cached file data to the device.
@@ -211,7 +224,15 @@ impl MountNode {
 
     /// Try to get the parent mount node.
     pub fn parent(&self) -> Option<Weak<Self>> {
-        self.parent.as_ref().map(|mount_node| mount_node.clone())
+        self.parent
+            .read()
+            .as_ref()
+            .map(|mount_node| mount_node.clone())
+    }
+
+    pub fn set_parent(&self, mount_node: Arc<MountNode>) {
+        let mut parent = self.parent.write();
+        *parent = Some(Arc::downgrade(&mount_node));
     }
 
     /// Get strong reference to self.

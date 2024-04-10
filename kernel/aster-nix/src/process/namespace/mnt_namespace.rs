@@ -26,7 +26,9 @@ impl MntNamespace {
 
     pub fn copy_mnt_ns(old_mnt_ns: &Arc<MntNamespace>) -> Arc<Self> {
         let old_mount_node = old_mnt_ns.root();
-        let new_mount_node = MountNode::copy_tree(old_mount_node.clone());
+        let new_mount_node =
+            MountNode::copy_tree(old_mount_node.clone(), old_mount_node.root_dentry().clone());
+        MountNode::process_move(new_mount_node.clone());
         MntNamespace::new(new_mount_node)
     }
 }

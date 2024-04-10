@@ -7,7 +7,7 @@ use crate::{
         ext2::Ext2,
         fs_resolver::{FsPath, AT_FDCWD},
         start_block_device,
-        utils::Path,
+        utils::{MountNode, Path},
     },
     log_syscall_entry,
     prelude::*,
@@ -31,6 +31,9 @@ pub fn sys_mount(
     let current = current!();
     let target_path = {
         let dirname = dirname.to_string_lossy();
+        if dirname.is_empty() {
+            return_errno_with_message!(Errno::ENOENT, "dirname is empty");
+        }
         let fs_path = FsPath::new(AT_FDCWD, dirname.as_ref())?;
         let path = current.fs().read().lookup(&fs_path)?;
         path
@@ -38,29 +41,22 @@ pub fn sys_mount(
 
     if mount_flags.contains(MountFlags::MS_REMOUNT) && mount_flags.contains(MountFlags::MS_BIND) {
         do_reconfigure_mnt();
-    }
-
-    if mount_flags.contains(MountFlags::MS_REMOUNT) {
+    } else if mount_flags.contains(MountFlags::MS_REMOUNT) {
         do_remount();
-    }
-
-    if mount_flags.contains(MountFlags::MS_BIND) {
-        do_loopback();
-    }
-
-    if mount_flags.contains(MountFlags::MS_SHARED)
+    } else if mount_flags.contains(MountFlags::MS_BIND) {
+        do_loopback(devname.clone(), target_path.clone());
+    } else if mount_flags.contains(MountFlags::MS_SHARED)
         | mount_flags.contains(MountFlags::MS_PRIVATE)
         | mount_flags.contains(MountFlags::MS_SLAVE)
         | mount_flags.contains(MountFlags::MS_UNBINDABLE)
     {
         do_change_type();
-    }
-
-    if mount_flags.contains(MountFlags::MS_MOVE) {
+    } else if mount_flags.contains(MountFlags::MS_MOVE) {
         do_move_mount_old();
+    } else {
+        do_new_mount(devname, target_path);
     }
 
-    do_new_mount(devname, target_path);
     Ok(SyscallReturn::Return(0))
 }
 
@@ -72,8 +68,23 @@ fn do_remount() {
     // TODO
 }
 
-fn do_loopback() {
-    // TODO
+fn do_loopback(old_name: CString, new_path: Arc<Path>) -> Result<()> {
+    let current = current!();
+    let old_path = {
+        let old_name = old_name.to_string_lossy();
+        if old_name.is_empty() {
+            return_errno_with_message!(Errno::ENOENT, "old_name is empty");
+        }
+        let fs_path = FsPath::new(AT_FDCWD, old_name.as_ref())?;
+        let path = current.fs().read().lookup(&fs_path)?;
+        path
+    };
+
+    let new_mount_node =
+        MountNode::copy_tree(old_path.mntnode().clone(), old_path.dentry().clone());
+
+    MountNode::attach_mnt(new_mount_node.clone(), new_path.clone());
+    Ok(())
 }
 
 fn do_change_type() {
