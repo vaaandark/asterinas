@@ -95,14 +95,29 @@ impl MountNode {
         new_mount_node.clone()
     }
 
+    pub fn unattch_mnt(mount_node: Arc<MountNode>) -> Result<()> {
+        if mount_node.parent().is_none() {
+            return_errno_with_message!(Errno::EINVAL, "mount_node is root");
+        }
+        let parent_mount_node = mount_node.parent().unwrap().upgrade().unwrap();
+        let mountpoint_dentry = mount_node.mountpoint_dentry().unwrap();
+        let mut children = parent_mount_node.children.lock();
+        let key = mountpoint_dentry.key();
+        children.remove(&key);
+        mount_node.set_mountpoint_dentry(None);
+        mount_node.set_parent(None);
+        mountpoint_dentry.clear_mountpoint();
+        Ok(())
+    }
+
     pub fn attach_mnt(new_mount_node: Arc<MountNode>, new_path: Arc<Path>) {
         let parent_mount_node = new_path.mntnode();
         let mountpoint_dentry = new_path.dentry();
         let mut children = parent_mount_node.children.lock();
         let key = mountpoint_dentry.key();
         children.insert(key, new_mount_node.clone());
-        new_mount_node.set_mountpoint_dentry(mountpoint_dentry.clone());
-        new_mount_node.set_parent(parent_mount_node.clone());
+        new_mount_node.set_mountpoint_dentry(Some(mountpoint_dentry.clone()));
+        new_mount_node.set_parent(Some(Arc::downgrade(parent_mount_node)));
         mountpoint_dentry.set_mountpoint();
     }
 
@@ -205,9 +220,9 @@ impl MountNode {
             .map(|mountpoint_dentry| mountpoint_dentry.clone())
     }
 
-    pub fn set_mountpoint_dentry(&self, mountpoint_dentry: Arc<Dentry>) {
+    pub fn set_mountpoint_dentry(&self, mountpoint_dentry: Option<Arc<Dentry>>) {
         let mut mountpoint = self.mountpoint_dentry.write();
-        *mountpoint = Some(mountpoint_dentry);
+        *mountpoint = mountpoint_dentry;
     }
 
     /// Flushes all pending filesystem metadata and cached file data to the device.
@@ -230,9 +245,9 @@ impl MountNode {
             .map(|mount_node| mount_node.clone())
     }
 
-    pub fn set_parent(&self, mount_node: Arc<MountNode>) {
+    pub fn set_parent(&self, mount_node: Option<Weak<MountNode>>) {
         let mut parent = self.parent.write();
-        *parent = Some(Arc::downgrade(&mount_node));
+        *parent = mount_node;
     }
 
     /// Get strong reference to self.

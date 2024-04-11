@@ -52,7 +52,7 @@ pub fn sys_mount(
     {
         do_change_type();
     } else if mount_flags.contains(MountFlags::MS_MOVE) {
-        do_move_mount_old();
+        do_move_mount_old(devname, target_path);
     } else {
         do_new_mount(devname, target_path);
     }
@@ -91,8 +91,26 @@ fn do_change_type() {
     // TODO
 }
 
-fn do_move_mount_old() {
-    // TODO
+fn do_move_mount_old(old_name: CString, new_path: Arc<Path>) -> Result<()> {
+    let current = current!();
+    let old_path = {
+        let old_name = old_name.to_string_lossy();
+        if old_name.is_empty() {
+            return_errno_with_message!(Errno::ENOENT, "old_name is empty");
+        }
+        let fs_path = FsPath::new(AT_FDCWD, old_name.as_ref())?;
+        let path = current.fs().read().lookup(&fs_path)?;
+        path
+    };
+
+    if !old_path.dentry().is_root_of_mount() && old_path.mntnode().parent().is_none() {
+        return_errno_with_message!(Errno::EINVAL, "old_name is not a mountpoint");
+    }
+
+    MountNode::unattch_mnt(old_path.mntnode().clone());
+    MountNode::attach_mnt(old_path.mntnode().clone(), new_path.clone());
+
+    Ok(())
 }
 
 fn do_new_mount(devname: CString, target_path: Arc<Path>) -> Result<()> {
