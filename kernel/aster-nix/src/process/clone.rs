@@ -17,6 +17,7 @@ use super::{
 use crate::{
     current_thread,
     fs::{file_table::FileTable, fs_resolver::FsResolver, utils::FileCreationMask},
+    net::namespace::NetNamespace,
     prelude::*,
     thread::{allocate_tid, thread_table, Thread, Tid},
     util::write_val_to_user,
@@ -109,7 +110,8 @@ impl CloneFlags {
             | CloneFlags::CLONE_PARENT_SETTID
             | CloneFlags::CLONE_CHILD_SETTID
             | CloneFlags::CLONE_CHILD_CLEARTID
-            | CloneFlags::CLONE_NEWNS;
+            | CloneFlags::CLONE_NEWNS
+            | CloneFlags::CLONE_NEWNET;
         let unsupported_flags = *self - supported_flags;
         if !unsupported_flags.is_empty() {
             panic!("contains unsupported clone flags: {:?}", unsupported_flags);
@@ -420,7 +422,12 @@ fn clone_nsproxy(
         parent_nsproxy.mnt_ns().clone()
     };
 
-    Arc::new(Mutex::new(Nsproxy::new(new_mnt_ns)))
+    let mut new_net_ns = parent_nsproxy.net_ns().clone();
+    if clone_flags.contains(CloneFlags::CLONE_NEWNET) {
+        (new_net_ns, _) = NetNamespace::new_with_loopback();
+    }
+
+    Arc::new(Mutex::new(Nsproxy::new(new_mnt_ns, new_net_ns)))
 }
 
 fn clone_files(
